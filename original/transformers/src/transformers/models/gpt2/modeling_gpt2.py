@@ -62,6 +62,8 @@ GPT2_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "distilgpt2",
     # See all GPT-2 models at https://huggingface.co/models?filter=gpt2
 ]
+
+
 def load_tf_weights_in_gpt2(model, config, gpt2_checkpoint_path):
     """Load tf checkpoints in a pytorch model"""
     try:
@@ -116,7 +118,6 @@ def load_tf_weights_in_gpt2(model, config, gpt2_checkpoint_path):
         logger.info(f"Initialize PyTorch weight {name}")
         pointer.data = torch.from_numpy(array)
     return model
-
 
 
 class GPT2Attention(nn.Module):
@@ -285,7 +286,6 @@ class GPT2Attention(nn.Module):
         tensor = tensor.permute(0, 2, 1, 3).contiguous()
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
         return tensor.view(new_shape)
-    
 
     def forward(
         self,
@@ -373,8 +373,7 @@ class GPT2Block(nn.Module):
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
         self.mlp = GPT2MLP(inner_dim, config)
-        
-        
+
     def forward(
         self,
         hidden_states: Optional[Tuple[torch.FloatTensor]],
@@ -435,6 +434,7 @@ class GPT2Block(nn.Module):
             outputs = (hidden_states,) + outputs[1:]
 
         return outputs  # hidden_states, present, (attentions, cross_attentions)
+
 
 class GPT2PreTrainedModel(PreTrainedModel):
     """
@@ -610,7 +610,6 @@ GPT2_INPUTS_DOCSTRING = r"""
         return_dict (`bool`, *optional*):
             Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
 """
-
 PARALLELIZE_DOCSTRING = r"""
     This is an experimental feature and is a subject to change at a moment's notice.
 
@@ -966,7 +965,6 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         self.model_parallel = False
         self.device_map = None
         self.losses = []
-
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1050,7 +1048,6 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         output_type=CausalLMOutputWithCrossAttentions,
         config_class=_CONFIG_FOR_DOC,
     )
-
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -1088,12 +1085,11 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
             encoder_attention_mask=encoder_attention_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
-            output_hidden_states=True,
+            output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-        ) 
-        
+        )
         hidden_states = transformer_outputs[0]
-        
+
         # Set device for model parallelism
         if self.model_parallel:
             torch.cuda.set_device(self.transformer.first_device)
@@ -1111,73 +1107,11 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-             ####ADDED
-            hidden_states = transformer_outputs.hidden_states
-            difference = []
-            for layer in range(len(hidden_states) - 2):
-                difference.append(hidden_states[layer] - hidden_states[layer + 1]) 
-            l2_norms = []
-            for i in range(len(difference[0])): #iterate over batch size
-                for j in range(len(difference[0][i])): #iterate over sequence length
-                    if (labels[i][j] != -100):
-                        l2_norms.append(torch.linalg.vector_norm(difference[0][i][j])) 
-                        # if i >= 1010: 
-                        #     print(difference[i][j])
-            mean_layer_l2norm_diff = sum(element for element in l2_norms) / len(l2_norms)
-            reg = 0.01
-            #loss = loss + reg * mean_layer_l2norm_diff.item()
-        ####END ADDED
+        self.losses.append(loss)
+        print(self.losses)
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
             return ((loss,) + output) if loss is not None else output
-        
-        # ####ADDED
-        # hidden_states = transformer_outputs.hidden_states
-        
-        # # layer_diffs_list = []
-        # difference = []
-        # for layer in range(len(hidden_states) - 2):
-        #     difference.append(hidden_states[layer] - hidden_states[layer + 1]) 
-        # # print(len(difference))
-        
-        # # l2_norms = []
-        # # for i in range(len(difference)):
-        # #     l2_norms_per_token = []
-        # #     # print(len(difference[i]))
-        # #     for j in range(len(difference[i][0])):
-        # #         l2_norms_per_token.append(torch.norm(difference[i][0][j], dim=-1).mean()) 
-        # #     l2_norms.append(l2_norms_per_token)
-        # #     # print(len(l2_norms))
-        # #     averages = []
-        # #     for lst in l2_norms:
-        # #         average = sum(lst) / len(lst)
-        # #         averages.append(average)
-
-        # # mean_layer_l2norm_diff = sum(element for element in averages) / len(averages)
-        # # print(len(labels[0]))
-        # # print(len(difference[0][0]))
-        # l2_norms = []
-        # for i in range(len(difference[0])): #iterate over batch size
-        #     # print(len(difference[0][i]))
-        #     for j in range(len(difference[0][i])): #iterate over sequence length
-        #         #this is where we would mask out invalid tokens - need to add this in, but it should work even without it
-        #         # print(i)
-        #         # print(j)
-        #         if (labels[i][j] != -100):
-        #             l2_norms.append(torch.linalg.vector_norm(difference[0][i][j])) 
-        #             if i >= 1010: 
-        #                 print(difference[i][j])
-        # # print(l2_norms)
-        # mean_layer_l2norm_diff = sum(element for element in l2_norms) / len(l2_norms)
-        # # print(mean_layer_l2norm_diff)
-        
-        # # print(layer_diffs_list)
-        
-        # reg = 0.0001
-        # loss = loss + reg * mean_layer_l2norm_diff.item()
-        # self.losses.append(loss)
-        # #print(self.losses)
-        # ####END ADDED
 
         return CausalLMOutputWithCrossAttentions(
             loss=loss,
@@ -1212,7 +1146,6 @@ input sequence).
 """,
     GPT2_START_DOCSTRING,
 )
-
 class GPT2DoubleHeadsModel(GPT2PreTrainedModel):
     _tied_weights_keys = ["lm_head.weight"]
 
@@ -1282,7 +1215,6 @@ class GPT2DoubleHeadsModel(GPT2PreTrainedModel):
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
-            
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
@@ -1352,7 +1284,6 @@ class GPT2DoubleHeadsModel(GPT2PreTrainedModel):
         >>> cls_token_location = [tokens.index(tokenizer.cls_token_id) for tokens in encoded_choices]
 
         >>> input_ids = torch.tensor(encoded_choices).unsqueeze(0)  # Batch size: 1, number of choices: 2
-
         >>> mc_token_ids = torch.tensor([cls_token_location])  # Batch size: 1
 
         >>> outputs = model(input_ids, mc_token_ids=mc_token_ids)
@@ -1692,7 +1623,6 @@ class GPT2ForQuestionAnswering(GPT2PreTrainedModel):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
-
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
@@ -1762,4 +1692,3 @@ class GPT2ForQuestionAnswering(GPT2PreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
