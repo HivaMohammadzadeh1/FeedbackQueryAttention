@@ -1111,51 +1111,73 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-
+             ####ADDED
+            hidden_states = transformer_outputs.hidden_states
+            difference = []
+            for layer in range(len(hidden_states) - 2):
+                difference.append(hidden_states[layer] - hidden_states[layer + 1]) 
+            l2_norms = []
+            for i in range(len(difference[0])): #iterate over batch size
+                for j in range(len(difference[0][i])): #iterate over sequence length
+                    if (labels[i][j] != -100):
+                        l2_norms.append(torch.linalg.vector_norm(difference[0][i][j])) 
+                        # if i >= 1010: 
+                        #     print(difference[i][j])
+            mean_layer_l2norm_diff = sum(element for element in l2_norms) / len(l2_norms)
+            reg = 0.01
+            #loss = loss + reg * mean_layer_l2norm_diff.item()
+        ####END ADDED
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
             return ((loss,) + output) if loss is not None else output
         
-        ####ADDED
-        hidden_states = transformer_outputs.hidden_states
+        # ####ADDED
+        # hidden_states = transformer_outputs.hidden_states
         
-        layer_diffs_list = []
-        difference = []
-        for layer in range(len(hidden_states) - 2):
-            difference.append(hidden_states[layer] - hidden_states[layer + 1]) 
-        # print(len(difference))
+        # # layer_diffs_list = []
+        # difference = []
+        # for layer in range(len(hidden_states) - 2):
+        #     difference.append(hidden_states[layer] - hidden_states[layer + 1]) 
+        # # print(len(difference))
         
+        # # l2_norms = []
+        # # for i in range(len(difference)):
+        # #     l2_norms_per_token = []
+        # #     # print(len(difference[i]))
+        # #     for j in range(len(difference[i][0])):
+        # #         l2_norms_per_token.append(torch.norm(difference[i][0][j], dim=-1).mean()) 
+        # #     l2_norms.append(l2_norms_per_token)
+        # #     # print(len(l2_norms))
+        # #     averages = []
+        # #     for lst in l2_norms:
+        # #         average = sum(lst) / len(lst)
+        # #         averages.append(average)
+
+        # # mean_layer_l2norm_diff = sum(element for element in averages) / len(averages)
+        # # print(len(labels[0]))
+        # # print(len(difference[0][0]))
         # l2_norms = []
-        # for i in range(len(difference)):
-        #     l2_norms_per_token = []
-        #     # print(len(difference[i]))
-        #     for j in range(len(difference[i][0])):
-        #         l2_norms_per_token.append(torch.norm(difference[i][0][j], dim=-1).mean()) 
-        #     l2_norms.append(l2_norms_per_token)
-        #     # print(len(l2_norms))
-        #     averages = []
-        #     for lst in l2_norms:
-        #         average = sum(lst) / len(lst)
-        #         averages.append(average)
-
-        # mean_layer_l2norm_diff = sum(element for element in averages) / len(averages)
+        # for i in range(len(difference[0])): #iterate over batch size
+        #     # print(len(difference[0][i]))
+        #     for j in range(len(difference[0][i])): #iterate over sequence length
+        #         #this is where we would mask out invalid tokens - need to add this in, but it should work even without it
+        #         # print(i)
+        #         # print(j)
+        #         if (labels[i][j] != -100):
+        #             l2_norms.append(torch.linalg.vector_norm(difference[0][i][j])) 
+        #             if i >= 1010: 
+        #                 print(difference[i][j])
+        # # print(l2_norms)
+        # mean_layer_l2norm_diff = sum(element for element in l2_norms) / len(l2_norms)
+        # # print(mean_layer_l2norm_diff)
         
-        l2_norms = []
-        for i in range(len(difference)): #iterate over batch size
-            for j in range(len(difference[i])): #iterate over sequence length
-                #this is where we would mask out invalid tokens - need to add this in, but it should work even without it
-                l2_norms.append(torch.norm(difference[i][j], dim=-1).mean()) 
-
-        mean_layer_l2norm_diff = sum(element for element in l2_norms) / len(l2_norms)
-        # print(mean_layer_l2norm_diff)
+        # # print(layer_diffs_list)
         
-        # print(layer_diffs_list)
-        
-        reg = 0.01
-        loss = loss + reg * mean_layer_l2norm_diff.item()
-        self.losses.append(loss.item())
-        print(self.losses)
-        ####END ADDED
+        # reg = 0.0001
+        # loss = loss + reg * mean_layer_l2norm_diff.item()
+        # self.losses.append(loss)
+        # #print(self.losses)
+        # ####END ADDED
 
         return CausalLMOutputWithCrossAttentions(
             loss=loss,

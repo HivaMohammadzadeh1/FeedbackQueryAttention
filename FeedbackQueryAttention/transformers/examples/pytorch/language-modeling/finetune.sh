@@ -6,5 +6,5 @@ python run_clm.py \
     --per_device_eval_batch_size 4 \
     --do_train \
     --do_eval \
-    --output_dir ./test-clm
+    --output_dir ./code-changed
 
